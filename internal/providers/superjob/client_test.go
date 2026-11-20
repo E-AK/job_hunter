@@ -65,12 +65,20 @@ func TestSearchReportsForbiddenStatus(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "HTTP 403") {
 		t.Fatalf("Search error = %v, want HTTP 403", err)
 	}
-	if !strings.Contains(logs.String(), "HTTP 403 operation=search") ||
+	requestIndex := strings.Index(logs.String(), "superjob API request:")
+	responseIndex := strings.Index(logs.String(), "superjob API response:")
+	if requestIndex < 0 || responseIndex <= requestIndex ||
+		!strings.Contains(logs.String(), "method=GET") ||
+		!strings.Contains(logs.String(), "keyword=developer") ||
+		!strings.Contains(logs.String(), "X-Api-App-Id=[REDACTED]") ||
+		!strings.Contains(logs.String(), "Authorization=[REDACTED]") ||
+		!strings.Contains(logs.String(), "body=<empty>") ||
+		!strings.Contains(logs.String(), "status=403") ||
 		!strings.Contains(logs.String(), `\"message\":\"App ID rejected\"`) ||
 		!strings.Contains(logs.String(), "response_body_truncated=true") {
-		t.Fatalf("403 diagnostic log missing status, message, or truncation marker: %s", logs.String())
+		t.Fatalf("403 diagnostic log missing request details, response, or truncation marker: %s", logs.String())
 	}
-	if len(logs.String()) > maxLoggedErrorBodyBytes+256 {
+	if len(logs.String()) > maxLoggedErrorBodyBytes+512 {
 		t.Fatalf("403 diagnostic log too large: %d bytes", len(logs.String()))
 	}
 	if strings.Contains(logs.String(), client.AppID) || strings.Contains(logs.String(), client.Token) {

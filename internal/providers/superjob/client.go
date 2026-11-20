@@ -8,7 +8,9 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -76,7 +78,7 @@ func (c *Client) Search(p domain.SearchParams) ([]domain.Vacancy, error) {
 	defer res.Body.Close()
 	if res.StatusCode != 200 {
 		if res.StatusCode == http.StatusForbidden {
-			logForbiddenResponse("search", res.Body)
+			logForbiddenResponse("search", req, res.Body)
 		}
 		return nil, fmt.Errorf("superjob API: HTTP %d", res.StatusCode)
 	}
@@ -123,7 +125,7 @@ func (c *Client) Get(id string) (map[string]any, error) {
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusOK {
 		if res.StatusCode == http.StatusForbidden {
-			logForbiddenResponse("get_vacancy", res.Body)
+			logForbiddenResponse("get_vacancy", req, res.Body)
 		}
 		return nil, fmt.Errorf("superjob vacancy API: HTTP %d", res.StatusCode)
 	}
@@ -134,15 +136,28 @@ func (c *Client) Get(id string) (map[string]any, error) {
 	return out, nil
 }
 
-func logForbiddenResponse(operation string, body io.Reader) {
+func logForbiddenResponse(operation string, req *http.Request, body io.Reader) {
+	headers := make([]string, 0, len(req.Header))
+	for name := range req.Header {
+		headers = append(headers, name+"=[REDACTED]")
+	}
+	sort.Strings(headers)
+	requestBody := "<empty>"
+	if req.Body != nil && req.Body != http.NoBody {
+		requestBody = "[REDACTED]"
+	}
+	log.Printf("superjob API request: operation=%s method=%s url=%q headers=[%s] body=%s",
+		operation, req.Method, req.URL.String(), strings.Join(headers, ", "), requestBody)
+
 	data, err := io.ReadAll(io.LimitReader(body, maxLoggedErrorBodyBytes+1))
 	if err != nil {
-		log.Printf("superjob API: HTTP 403 operation=%s response body read failed: %v", operation, err)
+		log.Printf("superjob API response: operation=%s status=403 response body read failed: %v", operation, err)
 		return
 	}
 	truncated := len(data) > maxLoggedErrorBodyBytes
 	if truncated {
 		data = data[:maxLoggedErrorBodyBytes]
 	}
-	log.Printf("superjob API: HTTP 403 operation=%s response_body_truncated=%t response_body=%q", operation, truncated, data)
+	log.Printf("superjob API response: operation=%s status=403 response_body_truncated=%t response_body=%q",
+		operation, truncated, data)
 }
