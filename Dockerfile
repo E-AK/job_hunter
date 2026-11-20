@@ -5,7 +5,11 @@ RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/job-hunter ./cmd/server
 
-FROM gcr.io/distroless/static-debian12:nonroot
+FROM alpine:3.21
+RUN apk add --no-cache ca-certificates tzdata \
+    && addgroup -S app \
+    && adduser -S -G app app
 COPY --from=build /out/job-hunter /job-hunter
+USER app
 EXPOSE 8092
 ENTRYPOINT ["/job-hunter"]

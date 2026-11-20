@@ -7,13 +7,27 @@ import (
 	"job-hunter-mcp/internal/domain"
 	"job-hunter-mcp/internal/providers/hh"
 	"job-hunter-mcp/internal/providers/superjob"
-	"job-hunter-mcp/internal/storage"
 	"net/http"
 	"strings"
 )
 
+type Store interface {
+	ListResumes(context.Context) ([]map[string]any, error)
+	AddResume(context.Context, string, string, string, string, map[string]any) (int64, error)
+	SaveVacancies(context.Context, []domain.Vacancy) (int, error)
+	ListVacancies(context.Context, int) ([]map[string]any, error)
+	SaveApplication(context.Context, int64, int64, string, string) (int64, error)
+}
+
+type ResultCache interface {
+	Get(context.Context, string, any) (any, bool, error)
+	Set(context.Context, string, any, any) error
+	Invalidate(context.Context) error
+}
+
 type Server struct {
-	Store                                                 *storage.Store
+	Store                                                 Store
+	Cache                                                 ResultCache
 	Token, HHUserAgent, SJAppID, SJToken, SJIzhevskTownID string
 }
 type rpc struct {
@@ -111,6 +125,29 @@ func num(a map[string]any, k string, def int) int {
 func (s *Server) call(ctx context.Context, p map[string]any) (any, error) {
 	name := arg(p, "name")
 	a, _ := p["arguments"].(map[string]any)
+	cacheable := name == "list_resumes" || name == "get_vacancy" || name == "get_recent_vacancies"
+	if cacheable && s.Cache != nil {
+		result, found, err := s.Cache.Get(ctx, name, a)
+		if err != nil {
+			return nil, fmt.Errorf("read MCP result cache: %w", err)
+		}
+		if found {
+			return result, nil
+		}
+	}
+	result, err := s.callTool(ctx, name, a)
+	if err != nil {
+		return nil, err
+	}
+	if cacheable && s.Cache != nil {
+		if err := s.Cache.Set(ctx, name, a, result); err != nil {
+			return nil, fmt.Errorf("write MCP result cache: %w", err)
+		}
+	}
+	return result, nil
+}
+
+func (s *Server) callTool(ctx context.Context, name string, a map[string]any) (any, error) {
 	switch name {
 	case "list_resumes":
 		v, e := s.Store.ListResumes(ctx)
@@ -118,6 +155,9 @@ func (s *Server) call(ctx context.Context, p map[string]any) (any, error) {
 	case "save_resume":
 		profile, _ := a["profile"].(map[string]any)
 		id, e := s.Store.AddResume(ctx, arg(a, "title"), arg(a, "file_name"), arg(a, "mime_type"), arg(a, "raw_text"), profile)
+		if e == nil {
+			e = s.invalidateCache(ctx)
+		}
 		return content(map[string]any{"resume_id": id, "message": "Резюме сохранено. Теперь можно анализировать его и подбирать вакансии."}), e
 	case "search_vacancies":
 		query := arg(a, "query")
@@ -160,6 +200,9 @@ func (s *Server) call(ctx context.Context, p map[string]any) (any, error) {
 		if e != nil {
 			return nil, e
 		}
+		if e = s.invalidateCache(ctx); e != nil {
+			return nil, e
+		}
 		return content(map[string]any{"found": len(all), "saved_or_updated": saved, "location": loc, "remote_only": remote, "vacancies": all, "provider_warnings": errs, "note": "Поиск не гарантирует полноту выдачи. В Ижевске API-фильтры по формату работы могут отличаться; проверь формат в карточке вакансии."}), nil
 	case "get_vacancy":
 		source, id := arg(a, "source"), arg(a, "source_id")
@@ -177,11 +220,25 @@ func (s *Server) call(ctx context.Context, p map[string]any) (any, error) {
 		return content(v), e
 	case "save_application_draft":
 		id, e := s.Store.SaveApplication(ctx, int64(num(a, "vacancy_id", 0)), int64(num(a, "resume_id", 0)), arg(a, "status"), arg(a, "cover_letter"))
+		if e == nil {
+			e = s.invalidateCache(ctx)
+		}
 		return content(map[string]any{"application_id": id, "saved": e == nil, "message": "Черновик сохранён; отклик не отправлялся."}), e
 	default:
 		return nil, fmt.Errorf("unknown tool: %s", name)
 	}
 }
+
+func (s *Server) invalidateCache(ctx context.Context) error {
+	if s.Cache == nil {
+		return nil
+	}
+	if err := s.Cache.Invalidate(ctx); err != nil {
+		return fmt.Errorf("invalidate MCP result cache: %w", err)
+	}
+	return nil
+}
+
 func content(v any) map[string]any {
 	b, _ := json.MarshalIndent(v, "", "  ")
 	return map[string]any{"content": []map[string]any{{"type": "text", "text": string(b)}}, "structuredContent": v, "isError": false}
