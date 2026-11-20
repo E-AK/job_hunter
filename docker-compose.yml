@@ -1,0 +1,34 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: jobhunter
+      POSTGRES_USER: jobhunter
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
+    volumes:
+      - job_hunter_pg:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jobhunter -d jobhunter"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  job-hunter-mcp:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://jobhunter:${POSTGRES_PASSWORD:-change-me}@postgres:5432/jobhunter?sslmode=disable
+    ports:
+      - "127.0.0.1:8092:8092"
+    volumes:
+      - job_hunter_resumes:/data/resumes
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  job_hunter_pg:
+  job_hunter_resumes:
