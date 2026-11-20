@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"job-hunter-mcp/internal/domain"
-	"job-hunter-mcp/internal/providers/hh"
 	"job-hunter-mcp/internal/providers/superjob"
 	"net/http"
 	"strings"
@@ -26,9 +25,9 @@ type ResultCache interface {
 }
 
 type Server struct {
-	Store                                                 Store
-	Cache                                                 ResultCache
-	Token, HHUserAgent, SJAppID, SJToken, SJIzhevskTownID string
+	Store                                    Store
+	Cache                                    ResultCache
+	Token, SJAppID, SJToken, SJIzhevskTownID string
 }
 type rpc struct {
 	JSONRPC string         `json:"jsonrpc"`
@@ -97,8 +96,8 @@ func tools() []map[string]any {
 	return []map[string]any{
 		tool("list_resumes", "Показать все загруженные резюме и извлечённые профили", map[string]any{"type": "object", "properties": map[string]any{}}),
 		tool("save_resume", "Сохранить резюме. Передавай полный извлечённый текст и только подтверждённые факты профиля.", obj(map[string]any{"title": str(), "file_name": str(), "mime_type": str(), "raw_text": str(), "profile": map[string]any{"type": "object"}}, []string{"title", "raw_text"})),
-		tool("search_vacancies", "Поиск вакансий в Ижевске (офис/гибрид/удалённо) или по России (только удалённо). Используй специализации из резюме; не добавляй навыки, которых в резюме нет.", obj(map[string]any{"query": str(), "location": map[string]any{"type": "string", "enum": []string{"izhevsk", "russia_remote"}}, "source": map[string]any{"type": "string", "enum": []string{"all", "hh", "superjob"}}, "limit": map[string]any{"type": "integer", "minimum": 1, "maximum": 100}}, []string{"query", "location"})),
-		tool("get_vacancy", "Получить полное описание и требования конкретной вакансии", obj(map[string]any{"source": map[string]any{"type": "string", "enum": []string{"hh", "superjob"}}, "source_id": str()}, []string{"source", "source_id"})),
+		tool("search_vacancies", "Поиск вакансий в Ижевске (офис/гибрид/удалённо) или по России (только удалённо). Используй специализации из резюме; не добавляй навыки, которых в резюме нет.", obj(map[string]any{"query": str(), "location": map[string]any{"type": "string", "enum": []string{"izhevsk", "russia_remote"}}, "source": map[string]any{"type": "string", "enum": []string{"all", "superjob"}}, "limit": map[string]any{"type": "integer", "minimum": 1, "maximum": 100}}, []string{"query", "location"})),
+		tool("get_vacancy", "Получить полное описание и требования конкретной вакансии", obj(map[string]any{"source": map[string]any{"type": "string", "enum": []string{"superjob"}}, "source_id": str()}, []string{"source", "source_id"})),
 		tool("get_recent_vacancies", "Получить сохранённые вакансии из локальной базы", obj(map[string]any{"limit": map[string]any{"type": "integer", "minimum": 1, "maximum": 100}}, nil)),
 		tool("save_application_draft", "Сохранить подготовленный отклик. Отправку работодателю этот инструмент не выполняет.", obj(map[string]any{"vacancy_id": map[string]any{"type": "integer"}, "resume_id": map[string]any{"type": "integer"}, "cover_letter": str(), "status": map[string]any{"type": "string", "enum": []string{"draft", "approved", "applied", "interview", "rejected", "offer"}}}, []string{"vacancy_id", "resume_id", "cover_letter"})),
 	}
@@ -180,9 +179,6 @@ func (s *Server) callTool(ctx context.Context, name string, a map[string]any) (a
 			remote = true
 		}
 		var providers []domain.Provider
-		if source == "all" || source == "hh" {
-			providers = append(providers, &hh.Client{UserAgent: s.HHUserAgent})
-		}
 		if source == "all" || source == "superjob" {
 			providers = append(providers, &superjob.Client{AppID: s.SJAppID, Token: s.SJToken, IzhevskTownID: s.SJIzhevskTownID})
 		}
@@ -206,10 +202,6 @@ func (s *Server) callTool(ctx context.Context, name string, a map[string]any) (a
 		return content(map[string]any{"found": len(all), "saved_or_updated": saved, "location": loc, "remote_only": remote, "vacancies": all, "provider_warnings": errs, "note": "Поиск не гарантирует полноту выдачи. В Ижевске API-фильтры по формату работы могут отличаться; проверь формат в карточке вакансии."}), nil
 	case "get_vacancy":
 		source, id := arg(a, "source"), arg(a, "source_id")
-		if source == "hh" {
-			v, e := (&hh.Client{UserAgent: s.HHUserAgent}).Get(id)
-			return content(v), e
-		}
 		if source == "superjob" {
 			v, e := (&superjob.Client{AppID: s.SJAppID, Token: s.SJToken, IzhevskTownID: s.SJIzhevskTownID}).Get(id)
 			return content(v), e

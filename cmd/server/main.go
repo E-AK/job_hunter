@@ -58,7 +58,7 @@ func main() {
 	}
 	srv := &mcp.Server{
 		Store: st, Cache: cache.New(cache.NewRedisBackend(redisClient), cacheTTL),
-		Token: c.AuthToken, HHUserAgent: c.HHUserAgent, SJAppID: c.SuperJobAppID, SJToken: c.SuperJobToken, SJIzhevskTownID: c.SuperJobIzhevskTownID,
+		Token: c.AuthToken, SJAppID: c.SuperJobAppID, SJToken: c.SuperJobToken, SJIzhevskTownID: c.SuperJobIzhevskTownID,
 	}
 	mux := http.NewServeMux()
 	mux.Handle("/", srv.Handler())
