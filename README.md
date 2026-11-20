@@ -12,7 +12,7 @@
 
 ```bash
 cp .env.example .env
-# Замените POSTGRES_PASSWORD и установите длинный случайный MCP_AUTH_TOKEN
+# Замените POSTGRES_PASSWORD и REDIS_PASSWORD и установите длинный случайный MCP_AUTH_TOKEN
 # При необходимости заполните SUPERJOB_APP_ID / SUPERJOB_ACCESS_TOKEN
 docker network create openclaw-mcp # только если общей сети ещё нет
 docker compose up -d --build
@@ -20,11 +20,11 @@ docker compose logs -f job-hunter-mcp
 curl http://127.0.0.1:8092/healthz
 ```
 
-Compose подключает `job-hunter-mcp` и к своей внутренней сети `default` (вместе с PostgreSQL), и к существующей внешней Docker-сети `openclaw-mcp`. PostgreSQL во внешнюю сеть не подключается. Docker Compose публикует порт только на loopback хоста; клиент в другом контейнере той же сети должен использовать service DNS `job-hunter-mcp`.
+Compose подключает `job-hunter-mcp` и к своей внутренней сети `default` (вместе с PostgreSQL и Redis), и к существующей внешней Docker-сети `openclaw-mcp`. PostgreSQL и Redis во внешнюю сеть не подключаются. Docker Compose публикует порт только на loopback хоста; клиент в другом контейнере той же сети должен использовать service DNS `job-hunter-mcp`.
 
-MCP использует Streamable HTTP в stateless-режиме: `POST /mcp` на порту `8092`. Из OpenClaw-контейнера URL — `http://job-hunter-mcp:8092/mcp`; с хоста — `http://127.0.0.1:8092/mcp`. Передавайте `Authorization: Bearer <MCP_AUTH_TOKEN>`. `MCP_AUTH_TOKEN` обязателен и должен содержать не менее 32 символов. `POSTGRES_PASSWORD` имеет небезопасное значение по умолчанию и должен быть заменён; `DATABASE_URL` в Compose автоматически направляется на service DNS `postgres`. `HH_USER_AGENT`, `SUPERJOB_APP_ID`, `SUPERJOB_ACCESS_TOKEN` и `SUPERJOB_IZHEVSK_TOWN_ID` — необязательные настройки провайдеров.
+MCP использует Streamable HTTP в stateless-режиме: `POST /mcp` на порту `8092`. Из OpenClaw-контейнера URL — `http://job-hunter-mcp:8092/mcp`; с хоста — `http://127.0.0.1:8092/mcp`. Передавайте `Authorization: Bearer <MCP_AUTH_TOKEN>`. `MCP_AUTH_TOKEN` обязателен и должен содержать не менее 32 символов. `POSTGRES_PASSWORD` и `REDIS_PASSWORD` имеют небезопасные значения по умолчанию и должны быть заменены; `DATABASE_URL` в Compose автоматически направляется на service DNS `postgres`. Redis по умолчанию доступен по `redis:6379`, использует базу `0`, сохраняет данные в volume и требует пароль из `REDIS_PASSWORD`. `CACHE_TTL` задаёт срок хранения результатов (по умолчанию `5m`). `HH_USER_AGENT`, `SUPERJOB_APP_ID`, `SUPERJOB_ACCESS_TOKEN` и `SUPERJOB_IZHEVSK_TOWN_ID` — необязательные настройки провайдеров.
 
-`/healthz` возвращает `200` без авторизации и доступен для проверки готовности по HTTP. У сервиса нет Docker Compose healthcheck; проверка PostgreSQL настроена отдельно.
+`/healthz` возвращает `200` без авторизации и доступен для проверки готовности по HTTP. Проверки готовности настроены для PostgreSQL и Redis; приложение ожидает их готовности при запуске.
 
 ## MCP tools
 
@@ -33,6 +33,8 @@ MCP использует Streamable HTTP в stateless-режиме: `POST /mcp` 
 - `search_vacancies` — поиск по выбранному запросу и географии.
 - `get_recent_vacancies` — последние вакансии в БД.
 - `save_application_draft` — сохранить черновик сопроводительного письма, не отправляя его.
+
+Redis кэширует результаты `list_resumes`, `get_vacancy` и `get_recent_vacancies` с TTL `CACHE_TTL`. Запросы кэша учитывают имя инструмента и все его аргументы; успешные `save_resume`, `save_application_draft` и `search_vacancies` инвалидируют кэш. Ошибки Redis возвращаются вызывающему MCP-клиенту явно.
 
 ## Передача резюме агенту
 
