@@ -128,3 +128,30 @@ func TestCallReturnsCacheErrors(t *testing.T) {
 		t.Fatalf("invalidation error = %v, want %v", err, redisErr)
 	}
 }
+
+func TestVacancyToolsExposeOnlySuperJobSource(t *testing.T) {
+	wantEnums := map[string][]string{
+		"search_vacancies": {"all", "superjob"},
+		"get_vacancy":      {"superjob"},
+	}
+	seen := make(map[string]bool, len(wantEnums))
+	for _, tool := range tools() {
+		name, _ := tool["name"].(string)
+		want, ok := wantEnums[name]
+		if !ok {
+			continue
+		}
+		seen[name] = true
+		schema := tool["inputSchema"].(map[string]any)
+		properties := schema["properties"].(map[string]any)
+		source := properties["source"].(map[string]any)
+		if got := source["enum"]; !reflect.DeepEqual(got, want) {
+			t.Errorf("%s source enum = %#v, want %#v", name, got, want)
+		}
+	}
+	for name := range wantEnums {
+		if !seen[name] {
+			t.Errorf("tool %q was not registered", name)
+		}
+	}
+}

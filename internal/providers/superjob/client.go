@@ -3,12 +3,16 @@ package superjob
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"job-hunter-mcp/internal/domain"
+	"log"
 	"net/http"
 	"net/url"
 	"strconv"
 	"time"
 )
+
+const maxLoggedErrorBodyBytes = 4096
 
 type Client struct {
 	HTTP                        *http.Client
@@ -71,6 +75,9 @@ func (c *Client) Search(p domain.SearchParams) ([]domain.Vacancy, error) {
 	}
 	defer res.Body.Close()
 	if res.StatusCode != 200 {
+		if res.StatusCode == http.StatusForbidden {
+			logForbiddenResponse("search", res.Body)
+		}
 		return nil, fmt.Errorf("superjob API: HTTP %d", res.StatusCode)
 	}
 	var d response
@@ -115,6 +122,9 @@ func (c *Client) Get(id string) (map[string]any, error) {
 	}
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusOK {
+		if res.StatusCode == http.StatusForbidden {
+			logForbiddenResponse("get_vacancy", res.Body)
+		}
 		return nil, fmt.Errorf("superjob vacancy API: HTTP %d", res.StatusCode)
 	}
 	var out map[string]any
@@ -122,4 +132,17 @@ func (c *Client) Get(id string) (map[string]any, error) {
 		return nil, err
 	}
 	return out, nil
+}
+
+func logForbiddenResponse(operation string, body io.Reader) {
+	data, err := io.ReadAll(io.LimitReader(body, maxLoggedErrorBodyBytes+1))
+	if err != nil {
+		log.Printf("superjob API: HTTP 403 operation=%s response body read failed: %v", operation, err)
+		return
+	}
+	truncated := len(data) > maxLoggedErrorBodyBytes
+	if truncated {
+		data = data[:maxLoggedErrorBodyBytes]
+	}
+	log.Printf("superjob API: HTTP 403 operation=%s response_body_truncated=%t response_body=%q", operation, truncated, data)
 }
