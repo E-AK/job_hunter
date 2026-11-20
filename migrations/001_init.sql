@@ -57,3 +57,11 @@ CREATE TABLE IF NOT EXISTS applications (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE(vacancy_id)
 );
+
+CREATE TABLE IF NOT EXISTS superjob_oauth_tokens (
+  singleton BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK (singleton),
+  access_token TEXT NOT NULL,
+  refresh_token TEXT NOT NULL,
+  expires_at TIMESTAMPTZ NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);

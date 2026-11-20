@@ -27,6 +27,13 @@ type SearchParams struct {
 	Limit      int
 	Page       int
 }
+
+type SuperJobOAuthToken struct {
+	AccessToken  string
+	RefreshToken string
+	ExpiresAt    time.Time
+}
+
 type Provider interface {
 	Search(SearchParams) ([]Vacancy, error)
 }

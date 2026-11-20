@@ -12,7 +12,7 @@
 ```bash
 cp .env.example .env
 # Замените POSTGRES_PASSWORD и REDIS_PASSWORD и установите длинный случайный MCP_AUTH_TOKEN
-# При необходимости заполните SUPERJOB_APP_ID / SUPERJOB_ACCESS_TOKEN
+# Для OAuth SuperJob задайте SUPERJOB_APP_SECRET, SUPERJOB_CLIENT_ID и redirect URI
 docker network create openclaw-mcp # только если общей сети ещё нет
 docker compose up -d --build
 docker compose logs -f job-hunter-mcp
@@ -21,11 +21,11 @@ curl http://127.0.0.1:8092/healthz
 
 Compose подключает `job-hunter-mcp` и к своей внутренней сети `default` (вместе с PostgreSQL и Redis), и к существующей внешней Docker-сети `openclaw-mcp`. PostgreSQL и Redis во внешнюю сеть не подключаются. Docker Compose публикует порт только на loopback хоста; клиент в другом контейнере той же сети должен использовать service DNS `job-hunter-mcp`.
 
-MCP использует Streamable HTTP в stateless-режиме: `POST /mcp` на порту `8092`. Из OpenClaw-контейнера URL — `http://job-hunter-mcp:8092/mcp`; с хоста — `http://127.0.0.1:8092/mcp`. Передавайте `Authorization: Bearer <MCP_AUTH_TOKEN>`. `MCP_AUTH_TOKEN` обязателен и должен содержать не менее 32 символов. `POSTGRES_PASSWORD` и `REDIS_PASSWORD` имеют небезопасные значения по умолчанию и должны быть заменены; `DATABASE_URL` в Compose автоматически направляется на service DNS `postgres`. Redis по умолчанию доступен по `redis:6379`, использует базу `0`, сохраняет данные в volume и требует пароль из `REDIS_PASSWORD`. `CACHE_TTL` задаёт срок хранения результатов (по умолчанию `5m`). `SUPERJOB_APP_ID`, `SUPERJOB_ACCESS_TOKEN` и `SUPERJOB_IZHEVSK_TOWN_ID` — необязательные настройки SuperJob API.
+MCP использует Streamable HTTP в stateless-режиме: `POST /mcp` на порту `8092`. Из OpenClaw-контейнера URL — `http://job-hunter-mcp:8092/mcp`; с хоста — `http://127.0.0.1:8092/mcp`. Передавайте `Authorization: Bearer <MCP_AUTH_TOKEN>`. `MCP_AUTH_TOKEN` обязателен и должен содержать не менее 32 символов. `POSTGRES_PASSWORD` и `REDIS_PASSWORD` имеют небезопасные значения по умолчанию и должны быть заменены; `DATABASE_URL` в Compose автоматически направляется на service DNS `postgres`. Redis по умолчанию доступен по `redis:6379`, использует базу `0`, сохраняет данные в volume и требует пароль из `REDIS_PASSWORD`. `CACHE_TTL` задаёт срок хранения результатов (по умолчанию `5m`). `SUPERJOB_APP_SECRET`, `SUPERJOB_CLIENT_ID`, `SUPERJOB_AUTHORIZATION_CODE`, `SUPERJOB_REDIRECT_URI`, `SUPERJOB_ACCESS_TOKEN` и `SUPERJOB_IZHEVSK_TOWN_ID` настраивают SuperJob API и OAuth.
 
 `/healthz` возвращает `200` без авторизации и доступен для проверки готовности по HTTP. Проверки готовности настроены для PostgreSQL и Redis; приложение ожидает их готовности при запуске.
 
-Поиск и получение вакансий выполняются через SuperJob API. Для запросов нужны `SUPERJOB_APP_ID` и, если выдан, `SUPERJOB_ACCESS_TOKEN`; Ижевску также нужен `SUPERJOB_IZHEVSK_TOWN_ID`. HTTP 403 означает, что сервер API отклонил запрос; проверьте параметры доступа приложения и разрешения API.
+Поиск и получение вакансий выполняются через SuperJob API. `SUPERJOB_APP_SECRET` — секретный ключ приложения, используемый в `X-Api-App-Id` и OAuth `client_secret`; старое имя `SUPERJOB_APP_ID` поддерживается как временный алиас для этого секрета. `SUPERJOB_CLIENT_ID` — числовой ID приложения. Для автоматического получения OAuth-токена задайте точный redirect URI, зарегистрированный в SuperJob, и откройте `https://www.superjob.ru/authorize/?client_id=<SUPERJOB_CLIENT_ID>&redirect_uri=<URL-encoded redirect URI>`. После согласия SuperJob перенаправит на этот URI с одноразовым `code`; поместите его в `SUPERJOB_AUTHORIZATION_CODE`. При первом поиске сервис обменяет код на access/refresh tokens и сохранит их в PostgreSQL; после успешного обмена удалите одноразовый код из окружения. Access token автоматически обновляется по refresh token. OAuth-токены хранятся в PostgreSQL в таблице `superjob_oauth_tokens`, поэтому доступ к БД следует ограничить. Если OAuth не настроен, заданный `SUPERJOB_ACCESS_TOKEN` используется без автоматического refresh. Ижевску также нужен `SUPERJOB_IZHEVSK_TOWN_ID`. HTTP 403 означает, что сервер API отклонил запрос; проверьте параметры доступа приложения и разрешения API.
 
 ## MCP tools
 

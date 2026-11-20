@@ -19,11 +19,11 @@ func (f roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 
 func TestSearchSendsConfiguredCredentials(t *testing.T) {
 	client := &Client{
-		AppID: "test-app-id",
-		Token: "test-access-token",
+		AppSecret: "test-app-secret",
+		Token:     "test-access-token",
 		HTTP: &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
-			if got := req.Header.Get("X-Api-App-Id"); got != "test-app-id" {
-				t.Errorf("X-Api-App-Id = %q, want configured app id", got)
+			if got := req.Header.Get("X-Api-App-Id"); got != "test-app-secret" {
+				t.Errorf("X-Api-App-Id = %q, want configured app secret", got)
 			}
 			if got := req.Header.Get("Authorization"); got != "Bearer test-access-token" {
 				t.Errorf("Authorization = %q, want configured bearer token", got)
@@ -50,8 +50,8 @@ func TestSearchReportsForbiddenStatus(t *testing.T) {
 	responseBody := `{"error":{"code":"forbidden","message":"App ID rejected"},"padding":"` +
 		strings.Repeat("x", maxLoggedErrorBodyBytes) + `"}`
 	client := &Client{
-		AppID: "do-not-log-app-id",
-		Token: "do-not-log-access-token",
+		AppSecret: "do-not-log-app-secret",
+		Token:     "do-not-log-access-token",
 		HTTP: &http.Client{Transport: roundTripperFunc(func(*http.Request) (*http.Response, error) {
 			return &http.Response{
 				StatusCode: http.StatusForbidden,
@@ -81,7 +81,7 @@ func TestSearchReportsForbiddenStatus(t *testing.T) {
 	if len(logs.String()) > maxLoggedErrorBodyBytes+512 {
 		t.Fatalf("403 diagnostic log too large: %d bytes", len(logs.String()))
 	}
-	if strings.Contains(logs.String(), client.AppID) || strings.Contains(logs.String(), client.Token) {
+	if strings.Contains(logs.String(), client.AppSecret) || strings.Contains(logs.String(), client.Token) {
 		t.Fatalf("403 diagnostic log contains credentials: %s", logs.String())
 	}
 }

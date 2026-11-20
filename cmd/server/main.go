@@ -6,6 +6,7 @@ import (
 	"job-hunter-mcp/internal/cache"
 	"job-hunter-mcp/internal/config"
 	"job-hunter-mcp/internal/mcp"
+	"job-hunter-mcp/internal/providers/superjob"
 	"job-hunter-mcp/internal/storage"
 	"log"
 	"net/http"
@@ -58,7 +59,12 @@ func main() {
 	}
 	srv := &mcp.Server{
 		Store: st, Cache: cache.New(cache.NewRedisBackend(redisClient), cacheTTL),
-		Token: c.AuthToken, SJAppID: c.SuperJobAppID, SJToken: c.SuperJobToken, SJIzhevskTownID: c.SuperJobIzhevskTownID,
+		Token: c.AuthToken, SJAppSecret: c.SuperJobAppSecret, SJToken: c.SuperJobToken, SJIzhevskTownID: c.SuperJobIzhevskTownID,
+		SJTokenSource: &superjob.TokenManager{
+			ClientID: c.SuperJobClientID, ClientSecret: c.SuperJobAppSecret,
+			AuthorizationCode: c.SuperJobAuthorizationCode, RedirectURI: c.SuperJobRedirectURI,
+			StaticAccessToken: c.SuperJobToken, Store: st,
+		},
 	}
 	mux := http.NewServeMux()
 	mux.Handle("/", srv.Handler())

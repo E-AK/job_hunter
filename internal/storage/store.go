@@ -3,7 +3,9 @@ package storage
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"job-hunter-mcp/internal/domain"
 	"time"
@@ -20,7 +22,39 @@ func New(ctx context.Context, dsn string) (*Store, error) {
 		p.Close()
 		return nil, e
 	}
+	if _, e = p.Exec(ctx, `CREATE TABLE IF NOT EXISTS superjob_oauth_tokens (
+		singleton BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK (singleton),
+		access_token TEXT NOT NULL,
+		refresh_token TEXT NOT NULL,
+		expires_at TIMESTAMPTZ NOT NULL,
+		updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+	)`); e != nil {
+		p.Close()
+		return nil, fmt.Errorf("ensure SuperJob OAuth token storage: %w", e)
+	}
 	return &Store{p}, nil
+}
+
+func (s *Store) GetSuperJobOAuthToken(ctx context.Context) (domain.SuperJobOAuthToken, bool, error) {
+	var token domain.SuperJobOAuthToken
+	e := s.DB.QueryRow(ctx, `SELECT access_token, refresh_token, expires_at
+		FROM superjob_oauth_tokens WHERE singleton=TRUE`).Scan(&token.AccessToken, &token.RefreshToken, &token.ExpiresAt)
+	if e != nil {
+		if errors.Is(e, pgx.ErrNoRows) {
+			return domain.SuperJobOAuthToken{}, false, nil
+		}
+		return domain.SuperJobOAuthToken{}, false, e
+	}
+	return token, true, nil
+}
+
+func (s *Store) SaveSuperJobOAuthToken(ctx context.Context, token domain.SuperJobOAuthToken) error {
+	_, e := s.DB.Exec(ctx, `INSERT INTO superjob_oauth_tokens(singleton, access_token, refresh_token, expires_at)
+		VALUES(TRUE, $1, $2, $3)
+		ON CONFLICT(singleton) DO UPDATE SET access_token=EXCLUDED.access_token,
+			refresh_token=EXCLUDED.refresh_token, expires_at=EXCLUDED.expires_at, updated_at=now()`,
+		token.AccessToken, token.RefreshToken, token.ExpiresAt)
+	return e
 }
 func (s *Store) SaveVacancies(ctx context.Context, vs []domain.Vacancy) (int, error) {
 	n := 0

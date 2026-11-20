@@ -17,8 +17,8 @@ import (
 const maxLoggedErrorBodyBytes = 4096
 
 type Client struct {
-	HTTP                        *http.Client
-	AppID, Token, IzhevskTownID string
+	HTTP                            *http.Client
+	AppSecret, Token, IzhevskTownID string
 }
 type response struct {
 	Objects []struct {
@@ -43,8 +43,8 @@ type response struct {
 }
 
 func (c *Client) Search(p domain.SearchParams) ([]domain.Vacancy, error) {
-	if c.AppID == "" {
-		return nil, fmt.Errorf("SUPERJOB_APP_ID не настроен")
+	if c.AppSecret == "" {
+		return nil, fmt.Errorf("SUPERJOB_APP_SECRET не настроен")
 	}
 	q := url.Values{}
 	q.Set("keyword", p.Text)
@@ -63,7 +63,7 @@ func (c *Client) Search(p domain.SearchParams) ([]domain.Vacancy, error) {
 	if e != nil {
 		return nil, e
 	}
-	req.Header.Set("X-Api-App-Id", c.AppID)
+	req.Header.Set("X-Api-App-Id", c.AppSecret)
 	if c.Token != "" {
 		req.Header.Set("Authorization", "Bearer "+c.Token)
 	}
@@ -103,14 +103,14 @@ func (c *Client) Search(p domain.SearchParams) ([]domain.Vacancy, error) {
 
 // Get returns the full SuperJob vacancy payload.
 func (c *Client) Get(id string) (map[string]any, error) {
-	if c.AppID == "" {
-		return nil, fmt.Errorf("SUPERJOB_APP_ID не настроен")
+	if c.AppSecret == "" {
+		return nil, fmt.Errorf("SUPERJOB_APP_SECRET не настроен")
 	}
 	req, err := http.NewRequest("GET", "https://api.superjob.ru/2.0/vacancies/"+url.PathEscape(id)+"/", nil)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("X-Api-App-Id", c.AppID)
+	req.Header.Set("X-Api-App-Id", c.AppSecret)
 	if c.Token != "" {
 		req.Header.Set("Authorization", "Bearer "+c.Token)
 	}

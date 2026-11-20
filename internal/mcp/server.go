@@ -25,9 +25,14 @@ type ResultCache interface {
 }
 
 type Server struct {
-	Store                                    Store
-	Cache                                    ResultCache
-	Token, SJAppID, SJToken, SJIzhevskTownID string
+	Store                                        Store
+	Cache                                        ResultCache
+	SJTokenSource                                AccessTokenSource
+	Token, SJAppSecret, SJToken, SJIzhevskTownID string
+}
+
+type AccessTokenSource interface {
+	AccessToken(context.Context) (string, error)
 }
 type rpc struct {
 	JSONRPC string         `json:"jsonrpc"`
@@ -179,11 +184,18 @@ func (s *Server) callTool(ctx context.Context, name string, a map[string]any) (a
 			remote = true
 		}
 		var providers []domain.Provider
+		var errs []string
 		if source == "all" || source == "superjob" {
-			providers = append(providers, &superjob.Client{AppID: s.SJAppID, Token: s.SJToken, IzhevskTownID: s.SJIzhevskTownID})
+			token, tokenErr := s.superJobAccessToken(ctx)
+			if tokenErr != nil {
+				errs = append(errs, tokenErr.Error())
+			} else {
+				providers = append(providers, &superjob.Client{
+					AppSecret: s.SJAppSecret, Token: token, IzhevskTownID: s.SJIzhevskTownID,
+				})
+			}
 		}
 		var all []domain.Vacancy
-		var errs []string
 		for _, pr := range providers {
 			vs, e := pr.Search(domain.SearchParams{Text: query, AreaID: area, RemoteOnly: remote, Limit: limit, Page: 0})
 			if e != nil {
@@ -203,7 +215,13 @@ func (s *Server) callTool(ctx context.Context, name string, a map[string]any) (a
 	case "get_vacancy":
 		source, id := arg(a, "source"), arg(a, "source_id")
 		if source == "superjob" {
-			v, e := (&superjob.Client{AppID: s.SJAppID, Token: s.SJToken, IzhevskTownID: s.SJIzhevskTownID}).Get(id)
+			token, e := s.superJobAccessToken(ctx)
+			if e != nil {
+				return nil, e
+			}
+			v, e := (&superjob.Client{
+				AppSecret: s.SJAppSecret, Token: token, IzhevskTownID: s.SJIzhevskTownID,
+			}).Get(id)
 			return content(v), e
 		}
 		return nil, fmt.Errorf("unsupported vacancy source: %s", source)
@@ -219,6 +237,13 @@ func (s *Server) callTool(ctx context.Context, name string, a map[string]any) (a
 	default:
 		return nil, fmt.Errorf("unknown tool: %s", name)
 	}
+}
+
+func (s *Server) superJobAccessToken(ctx context.Context) (string, error) {
+	if s.SJTokenSource != nil {
+		return s.SJTokenSource.AccessToken(ctx)
+	}
+	return s.SJToken, nil
 }
 
 func (s *Server) invalidateCache(ctx context.Context) error {
