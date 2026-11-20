@@ -14,12 +14,17 @@
 cp .env.example .env
 # Замените POSTGRES_PASSWORD и установите длинный случайный MCP_AUTH_TOKEN
 # При необходимости заполните SUPERJOB_APP_ID / SUPERJOB_ACCESS_TOKEN
+docker network create openclaw-mcp # только если общей сети ещё нет
 docker compose up -d --build
 docker compose logs -f job-hunter-mcp
 curl http://127.0.0.1:8092/healthz
 ```
 
-MCP endpoint: `http://127.0.0.1:8092/mcp` (Streamable HTTP, stateless POST). Передавайте `Authorization: Bearer <MCP_AUTH_TOKEN>`.
+Compose подключает `job-hunter-mcp` и к своей внутренней сети `default` (вместе с PostgreSQL), и к существующей внешней Docker-сети `openclaw-mcp`. PostgreSQL во внешнюю сеть не подключается. Docker Compose публикует порт только на loopback хоста; клиент в другом контейнере той же сети должен использовать service DNS `job-hunter-mcp`.
+
+MCP использует Streamable HTTP в stateless-режиме: `POST /mcp` на порту `8092`. Из OpenClaw-контейнера URL — `http://job-hunter-mcp:8092/mcp`; с хоста — `http://127.0.0.1:8092/mcp`. Передавайте `Authorization: Bearer <MCP_AUTH_TOKEN>`. `MCP_AUTH_TOKEN` обязателен и должен содержать не менее 32 символов. `POSTGRES_PASSWORD` имеет небезопасное значение по умолчанию и должен быть заменён; `DATABASE_URL` в Compose автоматически направляется на service DNS `postgres`. `HH_USER_AGENT`, `SUPERJOB_APP_ID`, `SUPERJOB_ACCESS_TOKEN` и `SUPERJOB_IZHEVSK_TOWN_ID` — необязательные настройки провайдеров.
+
+`/healthz` возвращает `200` без авторизации и доступен для проверки готовности по HTTP. У сервиса нет Docker Compose healthcheck; проверка PostgreSQL настроена отдельно.
 
 ## MCP tools
 
@@ -61,4 +66,4 @@ MCP endpoint: `http://127.0.0.1:8092/mcp` (Streamable HTTP, stateless POST). П�
 
 ## Пример конфигурации OpenClaw
 
-Если OpenClaw поддерживает удалённый MCP Streamable HTTP сервер, добавьте сервер `job-hunter` с URL `http://127.0.0.1:8092/mcp` и заголовком `Authorization: Bearer <token>`. Конкретная команда регистрации зависит от установленной версии OpenClaw.
+Если OpenClaw работает в контейнере, подключённом к сети `openclaw-mcp`, настройте сервер `job-hunter` на URL `http://job-hunter-mcp:8092/mcp` с заголовком `Authorization: Bearer <MCP_AUTH_TOKEN>`. Если OpenClaw работает на хосте, используйте `http://127.0.0.1:8092/mcp`. Конкретная команда регистрации зависит от установленной версии OpenClaw.

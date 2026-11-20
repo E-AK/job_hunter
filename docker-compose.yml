@@ -28,7 +28,15 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    networks:
+      default: {}
+      openclaw-mcp: {}
 
 volumes:
   job_hunter_pg:
   job_hunter_resumes:
+
+networks:
+  openclaw-mcp:
+    external: true
+    name: openclaw-mcp
